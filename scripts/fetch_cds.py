@@ -23,7 +23,8 @@ class NCBIClient:
 
     def call(self, endpoint: str, **params) -> str:
         params.update(email=Entrez.email, tool="homolog-cds-portfolio")
-        if Entrez.api_key: params["api_key"] = Entrez.api_key
+        if Entrez.api_key:
+            params["api_key"] = Entrez.api_key
         for attempt in range(5):
             time.sleep(max(0, self.interval - (time.monotonic() - self.last)))
             try:
@@ -72,6 +73,8 @@ def main():
 
     out = Path(a.outdir)
     out.mkdir(parents=True, exist_ok=True)
+    genbank_dir = out / "genbank"
+    genbank_dir.mkdir(parents=True, exist_ok=True)
     client = NCBIClient(a.email, a.api_key)
     queries = pd.read_csv(a.input, sep="\t")
     rows = []
@@ -116,7 +119,7 @@ def main():
         }
         if accession:
             gb = client.call("efetch.fcgi", db="nuccore", id=accession, rettype="gb", retmode="text")
-            gb_path = out / f"{q.query_id}_{accession}.gb"
+            gb_path = genbank_dir / f"{q.query_id}_{accession}.gb"
             gb_path.write_text(gb, encoding="utf-8")
             rec = SeqIO.read(io.StringIO(gb), "genbank")
             cds = extract_cds(rec, q.gene_symbol, eid_safe)

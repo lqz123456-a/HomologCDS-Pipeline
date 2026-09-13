@@ -1,32 +1,68 @@
+"""Run the offline pipeline demo using a normalized, pre-fetched CDS snapshot."""
+
+from __future__ import annotations
+
+import subprocess
+import sys
 from pathlib import Path
-import subprocess, sys, json
 
-ROOT=Path(__file__).resolve().parents[1]
-out=ROOT/'results'
-out.mkdir(exist_ok=True)
 
-def run(*args):
-    subprocess.run([sys.executable,*args],cwd=ROOT,check=True)
+ROOT = Path(__file__).resolve().parents[1]
+OUT = ROOT/"results"/"demo"
 
-run(
-    "scripts/qc_and_match.py",
-    "--fasta", "data/demo_cds.fasta",
-    "--homologs", "data/homolog_pairs.tsv",
-    "--outdir", "results",
-)
 
-run(
-    "scripts/rank_candidates.py",
-    "--matrix", "data/expression_matrix.tsv",
-    "--homologs", "data/homolog_pairs.tsv",
-    "--out", "results/candidate_genes.tsv",
-)
+def run(script: str, *args: str | Path) -> None:
+    subprocess.run(
+        [
+            sys.executable,
+            str(ROOT/"scripts"/script),
+            *(str(arg) for arg in args),
+        ],
+        cwd=ROOT,
+        check=True,
+    )
 
-summary = {
-    "mode": "offline demo",
-    "note": "Expression values are illustrative log2-scale values, not a biological conclusion."
-}
 
-(out / "run_summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
+def main() -> None:
+    OUT.mkdir(parents=True, exist_ok=True)
 
-print("Done. See results/.")
+    expression_matrix = ROOT/"data"/"expression_matrix_GSE18784.tsv"
+    homologs = ROOT/"data"/"homolog_pairs.tsv"
+    cds_fasta = ROOT/"data"/"demo_cds.fasta"
+    pre_candidates = OUT/"pre_candidate_genes.tsv"
+    gene_queries = OUT/"gene_queries.tsv"
+    candidate_homologs = OUT/"candidate_homologs.tsv"
+    qc_dir = OUT/"qc"
+    matched_homologs = qc_dir/"matched_homologs.tsv"
+    final_candidates = OUT/"candidate_genes.tsv"
+
+    run(
+        "rank_candidates.py",
+        "--matrix", expression_matrix,
+        "--homologs", homologs,
+        "--out", pre_candidates,
+    )
+    run(
+        "make_gene_queries.py",
+        "--pre-candidates", pre_candidates,
+        "--queries-out", gene_queries,
+        "--homologs-out", candidate_homologs,
+    )
+    run(
+        "qc_and_match.py",
+        "--fasta", cds_fasta,
+        "--homologs", candidate_homologs,
+        "--outdir", qc_dir,
+    )
+    run(
+        "combine_candidates.py",
+        "--pre-candidates", pre_candidates,
+        "--matched-homologs", matched_homologs,
+        "--out", final_candidates,
+    )
+
+    print("Offline demo complete. See results/demo/.")
+
+
+if __name__ == "__main__":
+    main()
